@@ -5,7 +5,7 @@ import shutil
 import sys
 from pathlib import Path
 from time import time
-from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 
 
 class Report(ABC):
@@ -125,37 +125,50 @@ def removing_folders(current_folder:Path) -> None:
         removing_folders(current_folder.parent)
 
 
-def sort_folders(path:Path) -> None:    
-    for i in path.iterdir():
-        new_name = normalize(i.name.replace(i.suffix,'')) 
-        
-        if i.is_dir() and i.name not in (CATEGORIES):
+def sort_folders(path: Path) -> None:
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_directory, i) for i in path.iterdir()]
+        for future in futures:
+            future.result()
+
+def process_directory(i: Path) -> None:
+    try:
+        new_name = normalize(i.name.replace(i.suffix, ''))
+
+        if i.is_dir() and i.name not in CATEGORIES:
             if len([f for f in i.iterdir()]) == 0:
-                i.rmdir()       
-            else:          
+                i.rmdir()
+            else:
                 i = i.rename(Path(i.parent).joinpath(new_name))
-                path = (path).joinpath(i)                
-                sort_folders (path)
-                
+                path = (i.parent).joinpath(i)
+                sort_folders(path)
+
         if i.is_file():
             category = define_category(i.suffix)
             target_path_to_create = Path(root_path).joinpath(category)
-            
+
             if not target_path_to_create.exists():
                 target_path_to_create.mkdir()
 
             sort_files_for_lists(category, i.name, i.suffix)
-            count_of_duplicates = check_duplicates (i.name)
-                
-            new_name = new_name + '_' + str(count_of_duplicates) + i.suffix if count_of_duplicates > 1 else new_name + i.suffix
-            
-            destination_folder = Path(root_path).joinpath(category, new_name)  
-            i.replace(destination_folder)
-            
-            if category == 'archives':
-                unpack_archive(destination_folder)
+            count_of_duplicates = check_duplicates(i.name)
 
-            removing_folders(i.parent)
+            new_name = new_name + '_' + str(count_of_duplicates) + i.suffix if count_of_duplicates > 1 else new_name + i.suffix
+
+            destination_folder = Path(root_path).joinpath(category, new_name)
+
+            with ThreadPoolExecutor() as file_executor:
+                file_executor.submit(i.replace, destination_folder)
+
+            if category == 'archives':
+                with ThreadPoolExecutor() as archive_executor:
+                    archive_executor.submit(unpack_archive, destination_folder)
+
+            with ThreadPoolExecutor() as folder_executor:
+                folder_executor.submit(removing_folders, i.parent)
+
+    except FileNotFoundError:
+        pass
 
 
 def sort_folder(path: str) -> str:
@@ -185,7 +198,7 @@ def main():
     result = Create_txt_report(folder_path)
     return result.create_report(folder_path)
 
-if __name__  == "__main__":
+if __name__ == "__main__":
     timer = time()
     print(main())
     logger.debug(f"{time() - timer}")
