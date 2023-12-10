@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
+import logging
 import re
 import shutil
 import sys
 from pathlib import Path
+from time import time
+from threading import Thread
 
 
 class Report(ABC):
@@ -47,6 +50,10 @@ class Create_txt_report:
 
         return f"Folder '{path}' sorted successfully. See report file: '{report_filename.absolute()}'."
 
+
+logger = logging.getLogger("time_log")
+logger.setLevel(logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG, format='Done in %(message)s sec')
 
 
 CATEGORIES = {'images':['.jpeg', '.png', '.jpg', '.svg'],
@@ -157,6 +164,7 @@ def sort_folder(path: str) -> str:
     if not root_path.exists():
         return f"The specified folder {path} does not exist."
     create_translation_dict()
+    
     sort_folders(Path(path))
 
 
@@ -178,5 +186,6 @@ def main():
     return result.create_report(folder_path)
 
 if __name__  == "__main__":
-    # main()
+    timer = time()
     print(main())
+    logger.debug(f"{time() - timer}")
